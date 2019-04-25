@@ -1,0 +1,36 @@
+input {
+    file {
+        path => "pping.log"
+        type => ping
+        codec => plain
+    }
+}
+
+filter {
+    csv {
+        columns => ["time","ip","rtt","backoff","delay","last_state","state"]
+        convert => {
+            "time"    => "integer"
+            "rtt"     => "float"
+            "backoff" => "integer"
+            "delay"   => "float"
+        }
+        remove_field => ["message","path","host","type"]
+    }
+    date {
+        match => ["time","UNIX"]
+        remove_field => ["time"]
+    }
+}
+
+output {
+    #stdout {
+    #    codec => rubydebug{}
+    #}
+    elasticsearch {
+        hosts => ["localhost"]
+        index => "logstash-pinger-%{+YYYY.MM.dd}"
+        template => "logstash/template.json"
+        template_name => "pinger"
+    }
+}
