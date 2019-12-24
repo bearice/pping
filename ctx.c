@@ -1,6 +1,11 @@
 #include "pping.h"
 
 static ctx_t *ctx_map[65536];
+static inline uint64_t tsdiff(struct timespec t1, struct timespec t2) {
+  uint64_t ts1 = t1.tv_sec * 1000000000L + t1.tv_nsec;
+  uint64_t ts2 = t2.tv_sec * 1000000000L + t2.tv_nsec;
+  return ts2 > ts1 ? ts2-ts1 : 1;
+};
 
 void ctx_put(ctx_t c) {
   uint32_t uaddr = ntohl(c->addr.sin_addr.s_addr);

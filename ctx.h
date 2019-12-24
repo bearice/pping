@@ -43,14 +43,3 @@ void ctx_make_request(ctx_t c, char *buf);
 void ctx_update_ts(ctx_t c, int tx, struct timespec *ts);
 void ctx_write_log(ctx_t c);
 
-static inline uint64_t tsdiff(struct timespec t1, struct timespec t2) {
-  struct timespec diff;
-  if (t2.tv_nsec - t1.tv_nsec < 0) {
-    diff.tv_sec = t2.tv_sec - t1.tv_sec - 1;
-    diff.tv_nsec = t2.tv_nsec - t1.tv_nsec + 1000000000;
-  } else {
-    diff.tv_sec = t2.tv_sec - t1.tv_sec;
-    diff.tv_nsec = t2.tv_nsec - t1.tv_nsec;
-  }
-  return (diff.tv_sec * 1000000000L + diff.tv_nsec);
-};
