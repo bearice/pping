@@ -1,7 +1,7 @@
 TARGET=pping
 
 CC = gcc
-CFLAGS ?= -g3 -finline-functions -Wall -Wmissing-prototypes
+CFLAGS ?= -g3 -fPIC -finline-functions -Wall -Wmissing-prototypes
 
 LD = gcc
 LDLIBS += -lev
