@@ -19,7 +19,7 @@ struct timespec *find_ts(struct msghdr *msg) {
       ts = (struct timespec *)CMSG_DATA(cmsg);
   }
   if (ts && ts[2].tv_sec) {
-    puts("using hw timestamp");
+    // puts("using hw timestamp");
     return ts + 2;
   } else {
     return ts;
