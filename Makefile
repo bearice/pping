@@ -6,8 +6,8 @@ CFLAGS ?= -g3 -finline-functions -Wall -Wmissing-prototypes
 LD = gcc
 LDLIBS += -lev
 
-HEADERS := job.h pping.h log.h
-SOURCES := job.c pping.c log.c
+HEADERS := ctx.h pping.h log.h
+SOURCES := ctx.c pping.c log.c
 OBJECTS = $(addsuffix .o, $(basename $(SOURCES)))
 
 all: $(TARGET)
