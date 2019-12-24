@@ -129,11 +129,13 @@ static void timeout_cb(EV_P_ ev_timer *w, int revents) {
   ev_io_start(EV_A_ c->io_w);
 }
 
+int verbose = 0;
 static void stat_cb(EV_P_ ev_timer *w, int revents) {
-  fprintf(stderr,
-          "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d (%d %d %d) BO=%d Q=%d\n",
-          tx_cnt, rx_cnt - re_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt, re_1,
-          re_2, re_3, bo_cnt, ctx_qlen);
+  if (verbose)
+    fprintf(stderr,
+            "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d (%d %d %d) BO=%d Q=%d\n",
+            tx_cnt, rx_cnt - re_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt,
+            re_1, re_2, re_3, bo_cnt, ctx_qlen);
   tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = re_cnt = re_1 = re_2 = re_3 =
       we_cnt = 0;
   ev_timer_again(EV_A_ w);
@@ -143,21 +145,31 @@ int main(int argc, char **argv) {
   int opt;
   char *log_name = NULL;
   int log_len = 1000 * 1000 * 10;
-  while ((opt = getopt(argc, argv, "o:l:")) != -1) {
+  float interval = 1.0;
+  while ((opt = getopt(argc, argv, "vi:o:l:")) != -1) {
     switch (opt) {
+    case 'v':
+      verbose = 1;
+      break;
     case 'o':
       log_name = optarg;
       break;
     case 'l':
       log_len = atoi(optarg);
       break;
+    case 'i':
+      interval = atof(optarg);
+      if (interval <= 0) {
+        fprintf(stderr, "bad interval: %s\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
     default: /* '?' */
-      fprintf(stderr, "Usage: %s [-o log_name] [-l log_name] targets...\n",
+      fprintf(stderr, "Usage: %s -v [-o log_name] [-l log_length] targets...\n",
               argv[0]);
       exit(EXIT_FAILURE);
     }
   }
-
   int i, flags;
   struct ev_loop *loop;
   int sock_cnt = 1;
@@ -197,6 +209,7 @@ int main(int argc, char **argv) {
   for (i = optind; i < argc; i++) {
     ctx_t c = ctx_new(argv[i], &io_r[i % sock_cnt], &io_w[i % sock_cnt],
                       sock[i % sock_cnt]);
+    c->interval = interval;
     ev_timer_init(&c->timeout, timeout_cb, (i % 1000) * 0.001, c->interval);
     ev_timer_start(loop, &c->timeout);
   }
