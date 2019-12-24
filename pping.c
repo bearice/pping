@@ -64,8 +64,7 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   }
   struct timespec *ts = find_ts(&msg);
   ctx_update_ts(c, CTX_TS_RX, ts);
-  uint8_t iplen = (0x0f & (*(uint8_t *)buf)) * 4;
-  ret = ctx_handle_reply(c, buf + iplen);
+  ret = ctx_handle_reply(c, buf);
   if (ret == 0)
     ctx_write_log(c);
   else {

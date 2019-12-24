@@ -17,9 +17,23 @@ struct job_ctx {
   int loss_thr;
   char state;
   char last_state;
+  uint8_t ipttl;
   ctx_t next;
 };
 
+/*
+state transit:
+I reply U
+U reply U
+D reply U
+L reply U
+
+I timeout I
+U timeout L
+L timeout L
+L timeout loss>thr D
+D timeout D
+*/
 #define JOB_STATE_INIT 'I'
 #define JOB_STATE_UP 'U'
 #define JOB_STATE_LOSS 'L'
@@ -28,7 +42,7 @@ struct job_ctx {
 #define CTX_TS_TX 1
 #define CTX_TS_RX 0
 
-static const char *job_state_name[] = {"init", "up", "loss", "down"};
+// static const char *job_state_name[] = {"init", "up", "loss", "down"};
 extern int ctx_qlen;
 
 ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock);

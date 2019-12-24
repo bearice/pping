@@ -70,7 +70,7 @@ ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock) {
   c->icmp_hdr.un.echo.sequence = htons(1);
 
   c->timeout.data = c;
-  c->state = c->last_state = JOB_STATE_DOWN;
+  c->state = c->last_state = JOB_STATE_INIT;
 
   c->io_w = io_w;
   c->io_r = io_r;
@@ -88,18 +88,30 @@ void ctx_set_state(ctx_t c, char s) {
 }
 
 void ctx_handle_timeout(ctx_t c) {
-  if (c->rtt_ns == 0) {
+  if (c->rtt_ns == 0) { // rtt_ns==0 means no reply recived
     c->loss++;
-    if (c->loss > c->loss_thr) {
-      ctx_set_state(c, JOB_STATE_DOWN);
-      if (c->last_state != JOB_STATE_DOWN) {
-        fprintf(stderr, "DOWN:%s\n", c->tgt);
-        // clock_gettime(CLOCK_REALTIME, &c->ts_tx);
-      }
-    } else if (c->last_state != JOB_STATE_DOWN) {
+    /*
+    I timeout I
+    U timeout L
+    L timeout L
+    L timeout loss>thr D
+    D timeout D
+    */
+    switch (c->state) {
+    case JOB_STATE_INIT:
+      break;
+    case JOB_STATE_UP:
       ctx_set_state(c, JOB_STATE_LOSS);
       fprintf(stderr, "LOSS:%s\n", c->tgt);
-      //   clock_gettime(CLOCK_REALTIME, &c->ts_tx);
+      break;
+    case JOB_STATE_LOSS:
+      if (c->loss > c->loss_thr) {
+        ctx_set_state(c, JOB_STATE_DOWN);
+        fprintf(stderr, "DOWN:%s\n", c->tgt);
+      }
+      break;
+    case JOB_STATE_DOWN:
+      break;
     }
   }
   if (c->loss > c->loss_thr) {
@@ -158,16 +170,19 @@ void ctx_update_ts(ctx_t c, int tx, struct timespec *ts) {
 void ctx_write_log(ctx_t c) {
   if (c->state == JOB_STATE_UP) {
     uint64_t t = c->rtt_ns = tsdiff(c->ts_tx, c->ts_rx);
-    log_write("%d,%s,%lf,%d,%f,%c,%c\n", c->ts_tx.tv_sec, c->tgt, t / 1000000.0,
-              c->loss, c->timeout.repeat, c->last_state, c->state);
-  } else if (c->last_state != JOB_STATE_DOWN) {
-    log_write("%d,%s,-1,%d,%f,%c,%c\n", c->ts_tx.tv_sec, c->tgt, c->loss,
-              c->timeout.repeat, c->last_state, c->state);
+    log_write("%d,%s,%lf,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt,
+              t / 1000000.0, c->loss, c->timeout.repeat, c->last_state,
+              c->state, c->ipttl);
+  } else if (c->state != JOB_STATE_INIT) {
+    log_write("%d,%s,-1,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt, c->loss,
+              c->timeout.repeat, c->last_state, c->state, c->ipttl);
   }
 }
 
 int ctx_handle_reply(ctx_t c, char *buf) {
-  struct icmphdr *icmp_hdr = (void *)buf;
+  uint8_t iplen = (0x0f & (*(uint8_t *)buf)) * 4;
+  c->ipttl = buf[8];
+  struct icmphdr *icmp_hdr = (void *)buf + iplen;
 
   if (icmp_hdr->type != ICMP_ECHOREPLY)
     return -1;
@@ -192,6 +207,12 @@ int ctx_handle_reply(ctx_t c, char *buf) {
   if (icmp_hdr->un.echo.id != c->icmp_hdr.un.echo.id) {
     return -3;
   }
+  /*
+  I reply U
+  U reply U
+  D reply U
+  L reply U
+  */
   ctx_set_state(c, JOB_STATE_UP);
   switch (c->state) {
   case JOB_STATE_LOSS:
