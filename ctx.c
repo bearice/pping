@@ -102,14 +102,14 @@ void ctx_handle_timeout(ctx_t c) {
       //   clock_gettime(CLOCK_REALTIME, &c->ts_tx);
     }
   }
-  // if (c->loss > 3) {
-  //   float d = (c->loss - 3) * 2;
-  //   if (d > 600.0)
-  //     d = 600.0;
-  //   d += rand() % 100 / 100.0;
-  //   ev_timer_set(&c->timeout, d, d);
-  //   // printf("loss=%f\n",d);
-  // }
+  if (c->loss > c->loss_thr) {
+    float d = (c->loss - c->loss_thr) * 1.5;
+    if (d > 60.0)
+      d = 60.0;
+    d += rand() % 10 / 10.0;
+    ev_timer_set(&c->timeout, d, d);
+    // printf("loss=%f\n",d);
+  }
   ctx_enqueue(c);
 }
 
