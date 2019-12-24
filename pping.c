@@ -17,6 +17,9 @@ struct timespec *find_ts(struct msghdr *msg) {
 
     if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMPING)
       ts = (struct timespec *)CMSG_DATA(cmsg);
+    else if (cmsg->cmsg_level == SOL_SOCKET &&
+             cmsg->cmsg_type == SO_TIMESTAMPNS)
+      return ts = (struct timespec *)CMSG_DATA(cmsg);
   }
   if (ts && ts[2].tv_sec) {
     // puts("using hw timestamp");
@@ -27,7 +30,7 @@ struct timespec *find_ts(struct msghdr *msg) {
 }
 
 int rx_cnt = 0, tx_cnt = 0, to_cnt = 0, eq_cnt = 0, wt_cnt = 0, we_cnt = 0,
-    re_cnt = 0, bo_cnt = 0;
+    re_1 = 0, re_2 = 0, re_3 = 0, re_cnt = 0, bo_cnt = 0;
 
 static void read_cb(EV_P_ ev_io *w, int revents) {
   rx_cnt++;
@@ -46,12 +49,17 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   int ret = recvmsg(w->fd, &msg, 0);
   if (ret < 0) {
     re_cnt++;
+    re_1++;
+    // fprintf(stderr, "events=%d\n", revents);
+    // exit(1);
     // perror("recvfrom");
     return;
   }
   ctx_t c = ctx_lookup(addr.sin_addr.s_addr);
   //   printf("read c=%x\n", c);
   if (!c) {
+    re_2++;
+    re_cnt++;
     return;
   }
   struct timespec *ts = find_ts(&msg);
@@ -60,6 +68,10 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   ret = ctx_handle_reply(c, buf + iplen);
   if (ret == 0)
     ctx_write_log(c);
+  else {
+    re_3++;
+    re_cnt++;
+  }
   //   printf("repeat=%f\n", c->timeout.repeat);
   ev_timer_again(EV_A_ & c->timeout);
 }
@@ -88,15 +100,16 @@ static void write_cb(EV_P_ ev_io *w, int revents) {
       return;
     }
 
-    msg.msg_controllen = sizeof(ctlbuf);
-    ret = recvmsg(c->sock, &msg, MSG_ERRQUEUE);
-    if (ret < 0) {
-      we_cnt++;
-      return;
-    }
+    // msg.msg_controllen = sizeof(ctlbuf);
+    // ret = recvmsg(c->sock, &msg, MSG_ERRQUEUE);
+    // if (ret < 0) {
+    //   we_cnt++;
+    //   return;
+    // }
 
-    struct timespec *ts = find_ts(&msg);
-    ctx_update_ts(c, CTX_TS_TX, ts);
+    // struct timespec *ts = find_ts(&msg);
+    // ctx_update_ts(c, CTX_TS_TX, ts);
+    ctx_update_ts(c, CTX_TS_TX, NULL);
     // ctx_write_log(c);
   } else {
     eq_cnt++;
@@ -118,10 +131,12 @@ static void timeout_cb(EV_P_ ev_timer *w, int revents) {
 }
 
 static void stat_cb(EV_P_ ev_timer *w, int revents) {
-  fprintf(stderr, "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d BO=%d Q=%d\n",
-          tx_cnt, rx_cnt - re_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt,
-          bo_cnt, ctx_qlen);
-  tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = re_cnt = we_cnt = 0;
+  fprintf(stderr,
+          "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d (%d %d %d) BO=%d Q=%d\n",
+          tx_cnt, rx_cnt - re_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt, re_1,
+          re_2, re_3, bo_cnt, ctx_qlen);
+  tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = re_cnt = re_1 = re_2 = re_3 =
+      we_cnt = 0;
   ev_timer_again(EV_A_ w);
 }
 
@@ -165,15 +180,17 @@ int main(int argc, char **argv) {
     flags = fcntl(sock[i], F_GETFL);
     fcntl(sock[i], F_SETFL, flags | O_NONBLOCK);
 
-    int val = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE |
-              SOF_TIMESTAMPING_TX_HARDWARE | SOF_TIMESTAMPING_TX_SOFTWARE;
-    val |= SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
-    setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val));
+    // int val = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE |
+    //           SOF_TIMESTAMPING_TX_HARDWARE | SOF_TIMESTAMPING_TX_SOFTWARE;
+    // val |= SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
+    int val = 1;
+    // setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val));
+    setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPNS, &val, sizeof(val));
 
     ev_io_init(io_r + i, read_cb, sock[i], EV_READ);
     ev_io_init(io_w + i, write_cb, sock[i], EV_WRITE);
-    ev_set_priority(io_r + i, 2);
-    ev_set_priority(io_w + i, 1);
+    // ev_set_priority(io_r + i, 2);
+    // ev_set_priority(io_w + i, 1);
     ev_io_start(loop, io_r + i);
     ev_io_start(loop, io_w + i);
   }

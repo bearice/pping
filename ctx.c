@@ -102,15 +102,14 @@ void ctx_handle_timeout(ctx_t c) {
       //   clock_gettime(CLOCK_REALTIME, &c->ts_tx);
     }
   }
-  /*
-  if(c->loss>3){
-      float d = (c->loss-3)*2;
-      if(d>600.0)d=600.0;
-      d+=rand()%100/100.0;
-      ev_timer_set(&c->timeout,d,d);
-      //printf("loss=%f\n",d);
-  }
-  */
+  // if (c->loss > 3) {
+  //   float d = (c->loss - 3) * 2;
+  //   if (d > 600.0)
+  //     d = 600.0;
+  //   d += rand() % 100 / 100.0;
+  //   ev_timer_set(&c->timeout, d, d);
+  //   // printf("loss=%f\n",d);
+  // }
   ctx_enqueue(c);
 }
 
@@ -173,21 +172,25 @@ int ctx_handle_reply(ctx_t c, char *buf) {
   if (icmp_hdr->type != ICMP_ECHOREPLY)
     return -1;
   if (icmp_hdr->un.echo.sequence != c->icmp_hdr.un.echo.sequence) {
-    fprintf(stderr, "seq mismatch: %d %d\n", icmp_hdr->un.echo.sequence,
-            htons(c->icmp_hdr.un.echo.sequence));
-    fprintf(stderr,
-            "ICMP header: \n"
-            "Type: %d, "
-            "Code: %d, ID: %d, Sequence: %d\n",
-            icmp_hdr->type, icmp_hdr->code, ntohs(icmp_hdr->un.echo.id),
-            ntohs(icmp_hdr->un.echo.sequence));
-    fprintf(stderr,
-            "ICMP header: \n"
-            "Type: %d, "
-            "Code: %d, ID: %d, Sequence: %d\n",
-            c->icmp_hdr.type, c->icmp_hdr.code, ntohs(c->icmp_hdr.un.echo.id),
-            ntohs(c->icmp_hdr.un.echo.sequence));
+    // fprintf(stderr, "seq mismatch: %d %d\n", icmp_hdr->un.echo.sequence,
+    //         htons(c->icmp_hdr.un.echo.sequence));
+    // fprintf(stderr,
+    //         "ICMP header: \n"
+    //         "Type: %d, "
+    //         "Code: %d, ID: %d, Sequence: %d\n",
+    //         icmp_hdr->type, icmp_hdr->code, ntohs(icmp_hdr->un.echo.id),
+    //         ntohs(icmp_hdr->un.echo.sequence));
+    // fprintf(stderr,
+    //         "ICMP header: \n"
+    //         "Type: %d, "
+    //         "Code: %d, ID: %d, Sequence: %d\n",
+    //         c->icmp_hdr.type, c->icmp_hdr.code,
+    //         ntohs(c->icmp_hdr.un.echo.id),
+    //         ntohs(c->icmp_hdr.un.echo.sequence));
     return -2;
+  }
+  if (icmp_hdr->un.echo.id != c->icmp_hdr.un.echo.id) {
+    return -3;
   }
   ctx_set_state(c, JOB_STATE_UP);
   switch (c->state) {
