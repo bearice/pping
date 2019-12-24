@@ -119,8 +119,8 @@ static void timeout_cb(EV_P_ ev_timer *w, int revents) {
 
 static void stat_cb(EV_P_ ev_timer *w, int revents) {
   fprintf(stderr, "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d BO=%d Q=%d\n",
-          tx_cnt, rx_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt, bo_cnt,
-          ctx_qlen);
+          tx_cnt, rx_cnt - re_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt,
+          bo_cnt, ctx_qlen);
   tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = re_cnt = we_cnt = 0;
   ev_timer_again(EV_A_ w);
 }
