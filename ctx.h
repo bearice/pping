@@ -38,8 +38,8 @@ void ctx_enqueue(ctx_t c);
 ctx_t ctx_dequeue();
 
 void ctx_handle_timeout(ctx_t c);
-void ctx_handle_reply(ctx_t c, char *buf);
-void ctx_make_request(ctx_t c, char *buf);
+int ctx_handle_reply(ctx_t c, char *buf);
+void ctx_make_request(ctx_t c, char *buf, int len);
 void ctx_update_ts(ctx_t c, int tx, struct timespec *ts);
 void ctx_write_log(ctx_t c);
 

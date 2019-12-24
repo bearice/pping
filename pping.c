@@ -27,7 +27,7 @@ struct timespec *find_ts(struct msghdr *msg) {
 }
 
 int rx_cnt = 0, tx_cnt = 0, to_cnt = 0, eq_cnt = 0, wt_cnt = 0, we_cnt = 0,
-    bo_cnt = 0;
+    re_cnt = 0, bo_cnt = 0;
 
 static void read_cb(EV_P_ ev_io *w, int revents) {
   rx_cnt++;
@@ -45,7 +45,8 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   msg.msg_controllen = sizeof(ctlbuf);
   int ret = recvmsg(w->fd, &msg, 0);
   if (ret < 0) {
-    perror("recvfrom");
+    re_cnt++;
+    // perror("recvfrom");
     return;
   }
   ctx_t c = ctx_lookup(addr.sin_addr.s_addr);
@@ -55,8 +56,10 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   }
   struct timespec *ts = find_ts(&msg);
   ctx_update_ts(c, CTX_TS_RX, ts);
-  ctx_handle_reply(c, buf);
-  ctx_write_log(c);
+  uint8_t iplen = (0x0f & (*(uint8_t *)buf)) * 4;
+  ret = ctx_handle_reply(c, buf + iplen);
+  if (ret == 0)
+    ctx_write_log(c);
   //   printf("repeat=%f\n", c->timeout.repeat);
   ev_timer_again(EV_A_ & c->timeout);
 }
@@ -70,7 +73,7 @@ static void write_cb(EV_P_ ev_io *w, int revents) {
       wt_cnt++;
     char buf[128];
     char ctlbuf[4096];
-    ctx_make_request(c, buf);
+    ctx_make_request(c, buf, sizeof(buf));
     struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
     struct msghdr msg = {0};
     msg.msg_iov = &iov;
@@ -115,9 +118,10 @@ static void timeout_cb(EV_P_ ev_timer *w, int revents) {
 }
 
 static void stat_cb(EV_P_ ev_timer *w, int revents) {
-  fprintf(stderr, "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d BO=%d Q=%d\n", tx_cnt,
-          rx_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, bo_cnt, ctx_qlen);
-  tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = we_cnt = 0;
+  fprintf(stderr, "TX=%d RX=%d TO=%d EQ=%d WT=%d WE=%d RE=%d BO=%d Q=%d\n",
+          tx_cnt, rx_cnt, to_cnt, eq_cnt, wt_cnt, we_cnt, re_cnt, bo_cnt,
+          ctx_qlen);
+  tx_cnt = rx_cnt = to_cnt = eq_cnt = wt_cnt = re_cnt = we_cnt = 0;
   ev_timer_again(EV_A_ w);
 }
 
@@ -153,7 +157,7 @@ int main(int argc, char **argv) {
 
   loop = EV_DEFAULT;
   for (i = 0; i < sock_cnt; i++) {
-    sock[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+    sock[i] = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sock[i] < 0) {
       perror("socket()");
       return EXIT_FAILURE;
