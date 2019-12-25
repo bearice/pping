@@ -63,17 +63,17 @@ ctx_t ctx_dequeue() {
 ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock) {
   ctx_t c = malloc(sizeof(struct job_ctx));
   memset(c, 0, sizeof(struct job_ctx));
-  c->tgt = tgt;
   c->seq = 1;
   c->interval = 1.0;
   c->loss_thr = 10;
 
   c->addr.sin_family = AF_INET;
-  if (inet_pton(AF_INET, c->tgt, &c->addr.sin_addr.s_addr) <= 0) {
+  if (inet_pton(AF_INET, tgt, &c->addr.sin_addr.s_addr) <= 0) {
     free(c);
     return NULL;
   }
-
+  inet_ntop(AF_INET, &c->addr.sin_addr.s_addr, c->tgt, sizeof(c->tgt));
+  strncpy(c->tgt, tgt, sizeof(c->tgt));
   c->icmp_hdr.type = ICMP_ECHO;
   c->icmp_hdr.un.echo.sequence = htons(1);
 

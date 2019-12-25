@@ -213,10 +213,13 @@ int main(int argc, char **argv) {
   char buf[32];
   i = optind;
   while (i < argc) {
+    // printf("f=%x i=%d\n", f, i);
     if (f == NULL && argv[i][0] == '@') {
-      f = fopen(argv[i] + 1, "r");
+      char *fn = &argv[i][1];
+      f = fopen(fn, "r");
+      // printf("f=%x i=%d s=%s\n", f, i, fn);
       if (!f)
-        perror(argv[i]);
+        perror(fn);
     }
     if (f) {
       tgt = fgets(buf, sizeof(buf), f);

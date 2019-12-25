@@ -1,7 +1,7 @@
 struct job_ctx;
 typedef struct job_ctx *ctx_t;
 struct job_ctx {
-  char *tgt;
+  char tgt[32];
   int seq;
   float interval;
   struct sockaddr_in addr;
@@ -56,4 +56,3 @@ int ctx_handle_reply(ctx_t c, char *buf);
 void ctx_make_request(ctx_t c, char *buf, int len);
 void ctx_update_ts(ctx_t c, int tx, struct timespec *ts);
 void ctx_write_log(ctx_t c);
-
