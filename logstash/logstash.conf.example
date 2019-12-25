@@ -8,12 +8,13 @@ input {
 
 filter {
     csv {
-        columns => ["time","ip","rtt","backoff","delay","last_state","state"]
+        columns => ["time","ip","rtt","loss","delay","last_state","state","ttl"]
         convert => {
             "time"    => "integer"
             "rtt"     => "float"
-            "backoff" => "integer"
+            "loss"    => "integer"
             "delay"   => "float"
+            "ttl"     => "integer"
         }
         remove_field => ["message","path","host","type"]
     }
@@ -24,13 +25,29 @@ filter {
 }
 
 output {
+    influxdb {
+        host => "localhost"
+        db => "ping"
+        coerce_values => {
+            "rtt" => "float"
+            "loss" => "integer"
+            "ttl" => "integer"
+        }
+        data_points => {
+            "rtt" => "%{rtt}"
+            "loss" => "%{loss}"
+            "ip" => "%{ip}"
+            "ttl" => "%{ttl}"
+        }
+        send_as_tags => ["ip"]
+    }
     #stdout {
     #    codec => rubydebug{}
     #}
-    elasticsearch {
-        hosts => ["localhost"]
-        index => "logstash-pinger-%{+YYYY.MM.dd}"
-        template => "logstash/template.json"
-        template_name => "pinger"
-    }
+    #elasticsearch {
+    #    hosts => ["localhost"]
+    #    index => "logstash-pinger-%{+YYYY.MM.dd}"
+    #    template => "logstash/template.json"
+    #    template_name => "pinger"
+    #}
 }
