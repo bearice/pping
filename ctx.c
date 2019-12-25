@@ -4,7 +4,7 @@ static ctx_t *ctx_map[65536];
 static inline uint64_t tsdiff(struct timespec t1, struct timespec t2) {
   uint64_t ts1 = t1.tv_sec * 1000000000L + t1.tv_nsec;
   uint64_t ts2 = t2.tv_sec * 1000000000L + t2.tv_nsec;
-  return ts2 > ts1 ? ts2-ts1 : 1;
+  return ts2 > ts1 ? ts2 - ts1 : 1;
 };
 
 void ctx_put(ctx_t c) {
@@ -69,7 +69,10 @@ ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock) {
   c->loss_thr = 10;
 
   c->addr.sin_family = AF_INET;
-  c->addr.sin_addr.s_addr = inet_addr(c->tgt);
+  if (inet_pton(AF_INET, c->tgt, &c->addr.sin_addr.s_addr) <= 0) {
+    free(c);
+    return NULL;
+  }
 
   c->icmp_hdr.type = ICMP_ECHO;
   c->icmp_hdr.un.echo.sequence = htons(1);

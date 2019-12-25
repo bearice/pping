@@ -165,7 +165,9 @@ int main(int argc, char **argv) {
       }
       break;
     default: /* '?' */
-      fprintf(stderr, "Usage: %s -v [-o log_name] [-l log_length] targets...\n",
+      fprintf(stderr,
+              "Usage: %s -v [-o log_name] [-l log_length] [@target_file] "
+              "targets...\n",
               argv[0]);
       exit(EXIT_FAILURE);
     }
@@ -205,15 +207,46 @@ int main(int argc, char **argv) {
     ev_io_start(loop, io_r + i);
     ev_io_start(loop, io_w + i);
   }
-
-  for (i = optind; i < argc; i++) {
-    ctx_t c = ctx_new(argv[i], &io_r[i % sock_cnt], &io_w[i % sock_cnt],
+  int host_cnt = 0;
+  char *tgt = NULL;
+  FILE *f = NULL;
+  char buf[32];
+  i = optind;
+  while (i < argc) {
+    if (f == NULL && argv[i][0] == '@') {
+      f = fopen(argv[i] + 1, "r");
+      if (!f)
+        perror(argv[i]);
+    }
+    if (f) {
+      tgt = fgets(buf, sizeof(buf), f);
+      if (NULL == tgt) {
+        fclose(f);
+        f = NULL;
+        i++;
+        continue;
+      }
+      tgt[strlen(tgt) - 1] = 0;
+    } else {
+      tgt = argv[i];
+      i++;
+    }
+    ctx_t c = ctx_new(tgt, &io_r[i % sock_cnt], &io_w[i % sock_cnt],
                       sock[i % sock_cnt]);
+    if (NULL == c) {
+      fprintf(stderr, "Invalid ip address: %s\n", tgt);
+      continue;
+    }
     c->interval = interval;
     ev_timer_init(&c->timeout, timeout_cb, (i % 1000) * 0.001, c->interval);
     ev_timer_start(loop, &c->timeout);
+    host_cnt++;
   }
-
+  if (host_cnt == 0) {
+    fputs("Nothing to do.", stderr);
+    return 0;
+  }
+  fprintf(stderr, "Pinging %d hosts...\n", host_cnt);
   ev_timer_init(&timer_stat, stat_cb, 1., 1.);
   ev_timer_start(loop, &timer_stat);
 
