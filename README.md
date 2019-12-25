@@ -31,6 +31,10 @@ RAW sockets which requires root privilege, however a dockered root would worked 
 
 You can run it like `./pping 172.16.{0..255}.{0..255}` for scanning a whole /16 network, add `-o pping.log` for redirect logs to file, log files will rotate after 10000000 lines, which is controlled by `-l`.
 
+### Slowstart
+
+To avoid a burst session creation at start to fire the firewall, an initial delay could be added to each target, delay is calcuted as `i * delay_factor / 1000.0` seconds, so `-s 1` which is the default value limits 100ms delay for the 100th target.
+
 ### Log format
 
 ```

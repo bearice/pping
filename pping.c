@@ -146,7 +146,8 @@ int main(int argc, char **argv) {
   char *log_name = NULL;
   int log_len = 1000 * 1000 * 10;
   float interval = 1.0;
-  while ((opt = getopt(argc, argv, "vi:o:l:")) != -1) {
+  float slowstart = 1.0;
+  while ((opt = getopt(argc, argv, "vi:o:l:s:")) != -1) {
     switch (opt) {
     case 'v':
       verbose = 1;
@@ -164,9 +165,17 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
       }
       break;
+    case 's':
+      slowstart = atof(optarg);
+      if (interval < 0) {
+        fprintf(stderr, "bad slowstart: %s\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
     default: /* '?' */
       fprintf(stderr,
-              "Usage: %s -v [-o log_name] [-l log_length] [@target_file] "
+              "Usage: %s -v [-o log_name] [-l log_length] [-s slow_start] "
+              "[@target_file] "
               "targets...\n",
               argv[0]);
       exit(EXIT_FAILURE);
@@ -241,7 +250,9 @@ int main(int argc, char **argv) {
       continue;
     }
     c->interval = interval;
-    ev_timer_init(&c->timeout, timeout_cb, (i % 1000) * 0.001, c->interval);
+    float initial_delay = (host_cnt * slowstart / 1000.0);
+    // printf("%s %f\n", c->tgt, initial_delay);
+    ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
     ev_timer_start(loop, &c->timeout);
     host_cnt++;
   }
