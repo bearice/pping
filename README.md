@@ -17,7 +17,7 @@ But wait, it could be thounds of them, since I can not spawn 65K `ping` process 
 
 ## Why not ...
 
-There are a lot existing tools like fping or smoking ping, would do the samiure things, but none of them would fullfill my requirement, such like scale, logging, and better timestamping.
+There are a lot existing tools like fping or smokeping, would do the same things, but none of them would fullfill my requirement, like scaling, logging, or timestamping.
 
 ## Setup
 
