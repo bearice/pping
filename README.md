@@ -3,7 +3,7 @@ large scale icmp pings
 
 ## but why?
 
-Have you ever had any chanllege like this:
+Have you ever had any challenge like this:
 ```
 > Dev: Something went wrong last night, it must be your infra faults.
 > Ops: Emmm, according to our monitoring system, it not seems like to be ....
@@ -13,11 +13,11 @@ Have you ever had any chanllege like this:
 ```
 
 OK, let's prove that infra/networking is not to blame by continuously pinging EVERY addresses in our network.
-But wait, it could be thounds of them, since I can not spawn 65K `ping` process on a server, I need to make a tool.
+But wait, it could be thousands of them, since I can not spawn 65K `ping` process on a server, I need to make a tool.
 
 ## Why not ...
 
-There are a lot existing tools like fping or smokeping, would do the same things, but none of them would fullfill my requirement, like scaling, logging, or timestamping.
+There are a lot existing tools like fping or smokeping, would do the same things, but none of them would fullfil my requirement, like scaling, logging, or timestamps.
 
 ## Setup
 
@@ -33,7 +33,11 @@ You can run it like `./pping 172.16.{0..255}.{0..255}` for scanning a whole /16 
 
 ### Slowstart
 
-To avoid a burst session creation at start to fire the firewall, an initial delay could be added to each target, delay is calcuted as `i * delay_factor / 1000.0` seconds, so `-s 1` which is the default value limits 100ms delay for the 100th target.
+To avoid a burst session creation at start to overload your firewall, an initial delay could be added to each target, delay is calculated as `i * delay_factor / 1000.0` seconds, so `-s 1` which is the default value limits 100ms delay for the 100th target.
+
+### Loss threshold and backoff
+
+Loss threshold controls how many loss before consider a target as down. When a target is down, probe delay will increase liner rate calculated based on losses. The max delay is 60s+rand(10s).
 
 ### Log format
 
@@ -54,14 +58,14 @@ TO timeout events
 EQ Empty queue event
 WT None-empty queue
 WE Write error
-RE Read error (syscall, unknow ip, bad reply)
+RE Read error (syscall, unknown ip, bad reply)
 BO Backed off
 Q  Queue length
 ```
 
 ## Analysis
 
-Personally i perfer using logstash for collect the logs and elasticsearch for analysis. templates and config example can be found in `logstash` dir.
+Personally i prefer using logstash for collect the logs and elasticsearch for analysis. templates and config example can be found in `logstash` dir.
 
 ## Performance
 
