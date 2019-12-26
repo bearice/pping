@@ -125,6 +125,8 @@ void ctx_handle_timeout(ctx_t c) {
   if (c->state == JOB_STATE_DOWN || c->state == JOB_STATE_INIT) {
     // liner backoff, with randomization, max timeout 60s
     float d = (c->loss - c->loss_thr) * 1.5;
+    if (d <= 0)
+      d = 1.0;
     if (d > 60.0)
       d = 60.0;
     d += rand() % 10 / 10.0;
