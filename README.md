@@ -1,6 +1,13 @@
 # pping
 large scale icmp pings
 
+## TL;DR
+
+```
+docker run --rm bearice/pping pping 1.1.1.{0..255}
+
+Usage: ./pping -v [-o log_name] [-l log_length] [-s slow_start] [-t loss_thr] [@target_file] targets...
+```
 ## but why?
 
 Have you ever had any challenge like this:
@@ -17,7 +24,7 @@ But wait, it could be thousands of them, since I can not spawn 65K `ping` proces
 
 ## Why not ...
 
-There are a lot existing tools like fping or smokeping, would do the same things, but none of them would fullfil my requirement, like scaling, logging, or timestamps.
+There are a lot existing tools like `fping` or `smokeping`, would do the same things, but none of them would fullfil my requirement, like scaling, logging, or timestamps.
 
 ## Setup
 
@@ -31,11 +38,15 @@ RAW sockets which requires root privilege, however a dockered root would worked 
 
 You can run it like `./pping 172.16.{0..255}.{0..255}` for scanning a whole /16 network, add `-o pping.log` for redirect logs to file, log files will rotate after 10000000 lines, which is controlled by `-l`.
 
-### Slowstart
+### Target list
+
+Use `@file` to load a list of ip addresses, each line contains one ip address and nothing else, unrecognizable lines will be ignored.
+
+### Slow start
 
 To avoid a burst session creation at start to overload your firewall, an initial delay could be added to each target, delay is calculated as `i * delay_factor / 1000.0` seconds, so `-s 1` which is the default value limits 100ms delay for the 100th target.
 
-### Loss threshold and backoff
+### Loss threshold and back off
 
 Loss threshold controls how many loss before consider a target as down. When a target is down, probe delay will increase liner rate calculated based on losses. The max delay is 60s+rand(10s).
 

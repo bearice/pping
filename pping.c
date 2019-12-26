@@ -178,9 +178,10 @@ int main(int argc, char **argv) {
       break;
     default: /* '?' */
       fprintf(stderr,
-              "Usage: %s -v [-o log_name] [-l log_length] [-s slow_start] "
-              "[@target_file] "
-              "targets...\n",
+              "Usage: %s -v [-o log_name] [-l log_length] [-s slow_start]"
+              " [-t loss_thr]"
+              " [@target_file]"
+              " targets...\n",
               argv[0]);
       exit(EXIT_FAILURE);
     }
