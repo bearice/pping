@@ -96,7 +96,7 @@ void ctx_set_state(ctx_t c, char s) {
 }
 
 void ctx_handle_timeout(ctx_t c) {
-  if (c->rtt_ns == 0) { // rtt_ns==0 means no reply recived
+  if (c->rtt_ns == 0) { // rtt_ns==0 means no reply received
     c->loss++;
     /*
     I timeout I
@@ -122,7 +122,8 @@ void ctx_handle_timeout(ctx_t c) {
       break;
     }
   }
-  if (c->loss > c->loss_thr) {
+  if (c->state == JOB_STATE_DOWN || c->state == JOB_STATE_INIT) {
+    // liner backoff, with randomization, max timeout 60s
     float d = (c->loss - c->loss_thr) * 1.5;
     if (d > 60.0)
       d = 60.0;

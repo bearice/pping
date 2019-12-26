@@ -147,7 +147,8 @@ int main(int argc, char **argv) {
   int log_len = 1000 * 1000 * 10;
   float interval = 1.0;
   float slowstart = 1.0;
-  while ((opt = getopt(argc, argv, "vi:o:l:s:")) != -1) {
+  int loss_thr = 10;
+  while ((opt = getopt(argc, argv, "vi:o:l:s:t:")) != -1) {
     switch (opt) {
     case 'v':
       verbose = 1;
@@ -157,6 +158,9 @@ int main(int argc, char **argv) {
       break;
     case 'l':
       log_len = atoi(optarg);
+      break;
+    case 't':
+      loss_thr = atoi(optarg);
       break;
     case 'i':
       interval = atof(optarg);
@@ -250,6 +254,7 @@ int main(int argc, char **argv) {
       continue;
     }
     c->interval = interval;
+    c->loss_thr = loss_thr;
     float initial_delay = (host_cnt * slowstart / 1000.0);
     // printf("%s %f\n", c->tgt, initial_delay);
     ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
