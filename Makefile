@@ -1,10 +1,10 @@
 TARGET=pping
 TARGET_STATIC=pping.static
 
-CC = gcc
-CFLAGS ?= -g3 -fPIC -finline-functions -Wall -Wmissing-prototypes
+CC = clang
+CFLAGS ?= -g3 -fPIC -finline-functions -Wall -Wmissing-prototypes -std=c11 -D_GNU_SOURCE
 
-LD = gcc
+LD = clang
 LDLIBS += -lev
 
 HEADERS := ctx.h pping.h log.h

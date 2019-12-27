@@ -1,21 +1,58 @@
 #include "pping.h"
 
-static ctx_t *ctx_map[65536];
-static inline uint64_t tsdiff(struct timespec t1, struct timespec t2) {
-  uint64_t ts1 = t1.tv_sec * 1000000000L + t1.tv_nsec;
-  uint64_t ts2 = t2.tv_sec * 1000000000L + t2.tv_nsec;
-  return ts2 > ts1 ? ts2 - ts1 : 1;
-};
+// #include <linux/time.h>
 
-void ctx_put(ctx_t c) {
+static ctx_t *ctx_map[0x10000];
+static ctx_t ctx_qhead = NULL, ctx_qtail = NULL;
+int ctx_qlen = 0;
+ctx_t ctx_lhead = NULL, ctx_ltail = NULL;
+
+static void ctx_add(ctx_t c) {
   uint32_t uaddr = ntohl(c->addr.sin_addr.s_addr);
   uint32_t h = uaddr >> 16;
   uint32_t l = uaddr & 0xffff;
   ctx_t *lv2 = ctx_map[h];
   if (!lv2) {
-    ctx_map[h] = lv2 = malloc(65536 * sizeof(ctx_t));
+    int sz = 0x10000 * sizeof(ctx_t);
+    ctx_map[h] = lv2 = malloc(sz);
+    memset(lv2, 0, sz);
   }
   lv2[l] = c;
+  if (ctx_ltail == NULL) {
+    ctx_ltail = ctx_lhead = c;
+  } else {
+    ctx_ltail->l_next = c;
+    c->l_prev = ctx_ltail;
+    ctx_ltail = c;
+  }
+}
+
+static void ctx_del(ctx_t c) {
+  uint32_t uaddr = ntohl(c->addr.sin_addr.s_addr);
+  uint32_t h = uaddr >> 16;
+  uint32_t l = uaddr & 0xffff;
+  ctx_t *lv2 = ctx_map[h];
+  if (lv2) {
+    lv2[l] = NULL;
+  }
+  if (c->l_prev) {
+    c->l_prev->l_next = c->l_next;
+  }
+  if (c == ctx_lhead) {
+    ctx_lhead = c->l_next;
+  }
+  if (c == ctx_ltail) {
+    ctx_ltail = c->l_prev;
+  }
+  if (c->q_prev) {
+    c->q_prev->q_next = c->q_next;
+  }
+  if (c == ctx_qhead) {
+    ctx_qhead = c->q_next;
+  }
+  if (c == ctx_qtail) {
+    ctx_qtail = c->q_next;
+  }
 }
 
 ctx_t ctx_lookup(in_addr_t addr) {
@@ -28,31 +65,31 @@ ctx_t ctx_lookup(in_addr_t addr) {
   return lv2[l];
 }
 
-static ctx_t ctx_head = NULL, ctx_tail = NULL;
-int ctx_qlen = 0;
 void ctx_enqueue(ctx_t c) {
-  if (c->next) {
+  if (c->q_next) {
     return;
   }
-  if (ctx_tail) {
-    ctx_tail->next = c;
-    ctx_tail = c;
+  if (ctx_qtail) {
+    ctx_qtail->q_next = c;
+    c->q_prev = ctx_qtail;
+    ctx_qtail = c;
   } else {
-    ctx_tail = ctx_head = c;
-    c->next = NULL;
+    ctx_qtail = ctx_qhead = c;
+    c->q_next = c->q_prev = NULL;
   }
   ctx_qlen++;
 }
 
 ctx_t ctx_dequeue() {
-  if (ctx_head) {
-    ctx_t c = ctx_head;
-    if (c->next) {
-      ctx_head = c->next;
+  if (ctx_qhead) {
+    ctx_t c = ctx_qhead;
+    if (c->q_next) {
+      ctx_qhead = c->q_next;
+      ctx_qhead->q_prev = NULL;
     } else {
-      ctx_head = ctx_tail = NULL;
+      ctx_qhead = ctx_qtail = NULL;
     }
-    c->next = NULL;
+    c->q_prev = c->q_next = NULL;
     ctx_qlen--;
     return c;
   } else {
@@ -60,19 +97,26 @@ ctx_t ctx_dequeue() {
   }
 }
 
-ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock) {
-  ctx_t c = malloc(sizeof(struct job_ctx));
-  memset(c, 0, sizeof(struct job_ctx));
+ctx_t ctx_new(char *tgt, struct io_ctx *io) {
+  in_addr_t addr;
+  if (inet_pton(AF_INET, tgt, &addr) <= 0) {
+    return NULL;
+  }
+
+  ctx_t c = ctx_lookup(addr);
+  if (c != NULL) {
+    return c;
+  }
+
+  c = malloc(sizeof(struct ctx));
+  memset(c, 0, sizeof(struct ctx));
   c->seq = 1;
   c->interval = 1.0;
   c->loss_thr = 10;
 
   c->addr.sin_family = AF_INET;
-  if (inet_pton(AF_INET, tgt, &c->addr.sin_addr.s_addr) <= 0) {
-    free(c);
-    return NULL;
-  }
-  inet_ntop(AF_INET, &c->addr.sin_addr.s_addr, c->tgt, sizeof(c->tgt));
+  c->addr.sin_addr.s_addr = addr;
+  inet_ntop(AF_INET, &addr, c->tgt, sizeof(c->tgt));
   strncpy(c->tgt, tgt, sizeof(c->tgt));
   c->icmp_hdr.type = ICMP_ECHO;
   c->icmp_hdr.un.echo.sequence = htons(1);
@@ -80,17 +124,27 @@ ctx_t ctx_new(char *tgt, ev_io *io_r, ev_io *io_w, int sock) {
   c->timeout.data = c;
   c->state = c->last_state = JOB_STATE_INIT;
 
-  c->io_w = io_w;
-  c->io_r = io_r;
-  c->sock = sock;
-
-  ctx_put(c);
+  c->io = io;
+  // c->io_w = io_w;
+  // c->io_r = io_r;
+  // c->sock = sock;
+  ctx_add(c);
   // ctx_enqueue(c);
-
   return c;
 }
 
-void ctx_set_state(ctx_t c, char s) {
+void ctx_free(ctx_t ctx) {
+  ctx_del(ctx);
+  free(ctx);
+}
+
+static inline uint64_t ts_diff(struct timespec t1, struct timespec t2) {
+  uint64_t ts1 = t1.tv_sec * 1000000000L + t1.tv_nsec;
+  uint64_t ts2 = t2.tv_sec * 1000000000L + t2.tv_nsec;
+  return ts2 > ts1 ? ts2 - ts1 : 1;
+};
+
+static void ctx_set_state(ctx_t c, char s) {
   c->last_state = c->state;
   c->state = s;
 }
@@ -160,12 +214,12 @@ static uint16_t icmp_csum(uint16_t *icmph, int len) {
   return ret;
 }
 
-void ctx_make_request(ctx_t c, char *buf, int len) {
+void ctx_make_request(ctx_t c, uint8_t *buf, int len) {
   c->rtt_ns = 0;
   c->icmp_hdr.un.echo.sequence = htons(c->seq++);
   c->icmp_hdr.checksum = 0;
   memcpy(buf, &c->icmp_hdr, sizeof(c->icmp_hdr));
-  c->icmp_hdr.checksum = icmp_csum(buf, len);
+  c->icmp_hdr.checksum = icmp_csum((uint16_t *)buf, len);
   memcpy(buf, &c->icmp_hdr, sizeof(c->icmp_hdr));
 }
 
@@ -180,20 +234,20 @@ void ctx_update_ts(ctx_t c, int tx, struct timespec *ts) {
 
 void ctx_write_log(ctx_t c) {
   if (c->state == JOB_STATE_UP) {
-    uint64_t t = c->rtt_ns = tsdiff(c->ts_tx, c->ts_rx);
+    uint64_t t = c->rtt_ns = ts_diff(c->ts_tx, c->ts_rx);
     log_write("%d,%s,%lf,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt,
               t / 1000000.0, c->loss, c->timeout.repeat, c->last_state,
-              c->state, c->ipttl);
+              c->state, c->ip_ttl);
   } else if (c->state != JOB_STATE_INIT) {
     log_write("%d,%s,-1,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt, c->loss,
-              c->timeout.repeat, c->last_state, c->state, c->ipttl);
+              c->timeout.repeat, c->last_state, c->state, c->ip_ttl);
   }
 }
 
-int ctx_handle_reply(ctx_t c, char *buf) {
-  uint8_t iplen = (0x0f & (*(uint8_t *)buf)) * 4;
-  c->ipttl = buf[8];
-  struct icmphdr *icmp_hdr = (void *)buf + iplen;
+int ctx_handle_reply(ctx_t c, uint8_t *buf) {
+  uint8_t ip_len = (0x0f & (*buf)) * 4;
+  c->ip_ttl = buf[8];
+  struct icmphdr *icmp_hdr = (void *)buf + ip_len;
 
   if (icmp_hdr->type != ICMP_ECHOREPLY)
     return -1;
