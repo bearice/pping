@@ -56,10 +56,11 @@ D timeout D
 
 // static const char *job_state_name[] = {"init", "up", "loss", "down"};
 extern int ctx_qlen;
+extern ctx_t ctx_lhead;
 
 ctx_t ctx_new(char *tgt, struct io_ctx *);
 void ctx_free(ctx_t ctx);
-// void ctx_add(ctx_t c);
+// int ctx_gc(int);
 ctx_t ctx_lookup(in_addr_t addr);
 void ctx_enqueue(ctx_t c);
 ctx_t ctx_dequeue(void);

@@ -147,21 +147,26 @@ static void stat_cb(EV_P_ ev_timer *w, int revents) {
   ev_timer_again(EV_A_ w);
 }
 
-float interval = 1.0;
-float slowstart = 1.0;
-int loss_thr = 10;
+static float interval = 1.0;
+static float slowstart = 1.0;
+static int loss_thr = 10;
+static int reload_cnt = 0;
+static int tgt_argc;
+static char **tgt_argv;
+static struct io_ctx *tgt_io;
+static struct ev_loop *tgt_loop;
 
-static int load_target_list(int argc, char **argv, struct io_ctx *io,
-                            struct ev_loop *loop) {
+static int load_target_list() {
+  reload_cnt++;
   int host_cnt = 0;
   char *tgt = NULL;
   FILE *f = NULL;
   char buf[32];
   int i = 0;
-  while (i < argc) {
+  while (i < tgt_argc) {
     // printf("f=%x i=%d\n", f, i);
-    if (f == NULL && argv[i][0] == '@') {
-      char *fn = &argv[i][1];
+    if (f == NULL && tgt_argv[i][0] == '@') {
+      char *fn = &tgt_argv[i][1];
       f = fopen(fn, "r");
       // printf("f=%x i=%d s=%s\n", f, i, fn);
       if (!f)
@@ -177,23 +182,54 @@ static int load_target_list(int argc, char **argv, struct io_ctx *io,
       }
       tgt[strlen(tgt) - 1] = 0;
     } else {
-      tgt = argv[i];
+      tgt = tgt_argv[i];
       i++;
     }
-    ctx_t c = ctx_new(tgt, io);
+    ctx_t c = ctx_new(tgt, tgt_io);
     if (NULL == c) {
       fprintf(stderr, "Invalid ip address: %s\n", tgt);
       continue;
     }
     c->interval = interval;
     c->loss_thr = loss_thr;
-    float initial_delay = (host_cnt * slowstart / 1000.0);
-    // printf("%s %f\n", c->tgt, initial_delay);
-    ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
-    ev_timer_start(loop, &c->timeout);
+    if (0 == c->reload_cnt) {
+      float initial_delay = (host_cnt * slowstart / 1000.0);
+      // printf("%s %f\n", c->tgt, initial_delay);
+      ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
+      ev_timer_start(tgt_loop, &c->timeout);
+    }
+    c->reload_cnt = reload_cnt;
     host_cnt++;
   }
+
+  if (reload_cnt > 1) {
+    int n = 0;
+    ctx_t c = ctx_lhead;
+    while (c) {
+      printf("c=%x rc=%d rcc=%d\n", c, c->reload_cnt, reload_cnt);
+      if (c->reload_cnt < reload_cnt) {
+        ctx_t next = c->l_next;
+        ev_timer_stop(tgt_loop, &c->timeout);
+        ctx_free(c);
+        c = next;
+        n++;
+      } else {
+        c = c->l_next;
+      }
+    }
+    if (n)
+      fprintf(stderr, "Removed %d targets\n", n);
+  }
   return host_cnt;
+}
+
+static void sigusr1_cb(EV_P_ ev_signal *w, int revents) {
+  int host_cnt = load_target_list();
+  fprintf(stderr, "Loaded %d targets.\n", host_cnt);
+}
+
+static void sigint_cb(EV_P_ ev_signal *w, int revents) {
+  ev_break(EV_A, EVBREAK_ALL);
 }
 
 int main(int argc, char **argv) {
@@ -273,7 +309,12 @@ int main(int argc, char **argv) {
     ev_io_start(loop, &io[i].r);
     ev_io_start(loop, &io[i].w);
   }
-  int host_cnt = load_target_list(argc - optind, argv + optind, io, loop);
+  tgt_argc = argc - optind;
+  tgt_argv = argv + optind;
+  tgt_io = io;
+  tgt_loop = loop;
+
+  int host_cnt = load_target_list();
   fprintf(stderr, "Loaded %d targets.\n", host_cnt);
 
   if (host_cnt == 0) {
@@ -284,6 +325,14 @@ int main(int argc, char **argv) {
   ev_timer timer_stat;
   ev_timer_init(&timer_stat, stat_cb, 1., 1.);
   ev_timer_start(loop, &timer_stat);
+
+  ev_signal sigint;
+  ev_signal_init(&sigint, sigint_cb, SIGINT);
+  ev_signal_start(loop, &sigint);
+
+  ev_signal sigusr1;
+  ev_signal_init(&sigusr1, sigusr1_cb, SIGUSR1);
+  ev_signal_start(loop, &sigusr1);
 
   ev_run(loop, 0);
   return 0;

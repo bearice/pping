@@ -3,9 +3,9 @@
 // #include <linux/time.h>
 
 static ctx_t *ctx_map[0x10000];
-static ctx_t ctx_lhead = NULL, ctx_ltail = NULL;
 static ctx_t ctx_qhead = NULL, ctx_qtail = NULL;
 int ctx_qlen = 0;
+ctx_t ctx_lhead = NULL, ctx_ltail = NULL;
 
 static void ctx_add(ctx_t c) {
   uint32_t uaddr = ntohl(c->addr.sin_addr.s_addr);
