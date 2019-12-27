@@ -74,6 +74,24 @@ BO Backed off
 Q  Queue length
 ```
 
+### Reload target list
+
+```
+#!/bin/bash
+
+./pping 1.1.1.1 @a &
+pid=$!
+sleep 3
+echo 8.8.8.8 > a
+kill -USR1 $pid
+sleep 3
+rm a
+kill -USR1 $pid
+sleep 3
+wait $pid
+
+```
+
 ## Analysis
 
 Personally i prefer using logstash for collect the logs and elasticsearch for analysis. templates and config example can be found in `logstash` dir.
