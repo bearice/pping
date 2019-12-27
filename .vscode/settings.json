@@ -1,5 +1,15 @@
 {
     "files.associations": {
         "ctx.h": "c"
-    }
+    },
+    "cSpell.words": [],
+    "cSpell.ignoreWords": [
+        "ctx",
+        "icmph",
+        "lhead",
+        "ltail",
+        "qhead",
+        "qtail",
+        "timestampns"
+    ]
 }

@@ -1,6 +1,14 @@
 #include "pping.h"
 
-struct timespec *find_ts(struct msghdr *msg) {
+#include <getopt.h>
+
+struct io_ctx {
+  int sock;
+  ev_io r;
+  ev_io w;
+};
+
+static struct timespec *find_ts(struct msghdr *msg) {
   struct timespec *ts = NULL;
   struct cmsghdr *cmsg;
   //   struct sock_extended_err *ext;
@@ -15,18 +23,16 @@ struct timespec *find_ts(struct msghdr *msg) {
     //   continue;
     // }
 
-    if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMPING)
+    if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMPING) {
       ts = (struct timespec *)CMSG_DATA(cmsg);
-    else if (cmsg->cmsg_level == SOL_SOCKET &&
-             cmsg->cmsg_type == SO_TIMESTAMPNS)
-      return ts = (struct timespec *)CMSG_DATA(cmsg);
+      if (ts[2].tv_sec)
+        ts = ts + 2;
+    } else if (cmsg->cmsg_level == SOL_SOCKET &&
+               cmsg->cmsg_type == SO_TIMESTAMPNS)
+      ts = (struct timespec *)CMSG_DATA(cmsg);
   }
-  if (ts && ts[2].tv_sec) {
-    // puts("using hw timestamp");
-    return ts + 2;
-  } else {
-    return ts;
-  }
+  // puts("using hw timestamp");
+  return ts;
 }
 
 int rx_cnt = 0, tx_cnt = 0, to_cnt = 0, eq_cnt = 0, wt_cnt = 0, we_cnt = 0,
@@ -37,7 +43,7 @@ static void read_cb(EV_P_ ev_io *w, int revents) {
   unsigned char buf[2048];
   char ctlbuf[4096];
   struct sockaddr_in addr = {0};
-  socklen_t slen = sizeof(addr);
+  // socklen_t slen = sizeof(addr);
   struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
   struct msghdr msg = {0};
   msg.msg_iov = &iov;
@@ -80,9 +86,9 @@ static void write_cb(EV_P_ ev_io *w, int revents) {
   //   printf("write c=%x\n", c);
   if (c) {
     tx_cnt++;
-    if (c->next)
+    if (c->q_next)
       wt_cnt++;
-    char buf[128];
+    uint8_t buf[128];
     char ctlbuf[4096];
     ctx_make_request(c, buf, sizeof(buf));
     struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
@@ -93,7 +99,7 @@ static void write_cb(EV_P_ ev_io *w, int revents) {
     msg.msg_namelen = sizeof(c->addr);
     msg.msg_control = ctlbuf;
     msg.msg_controllen = 0;
-    int ret = sendmsg(c->sock, &msg, 0);
+    int ret = sendmsg(c->io->sock, &msg, 0);
     if (ret < 0) {
       we_cnt++;
       return;
@@ -119,14 +125,14 @@ static void write_cb(EV_P_ ev_io *w, int revents) {
 static void timeout_cb(EV_P_ ev_timer *w, int revents) {
   to_cnt++;
   ctx_t c = (ctx_t)w->data;
-  char st = c->state;
+  // char st = c->state;
   //   printf("timeout c=%x st=%c\n", c, st);
   ctx_update_ts(c, CTX_TS_TX, NULL);
   ctx_handle_timeout(c);
   if (c->rtt_ns == 0)
     ctx_write_log(c);
   ev_timer_again(EV_A_ & c->timeout);
-  ev_io_start(EV_A_ c->io_w);
+  ev_io_start(EV_A_ & c->io->w);
 }
 
 int verbose = 0;
@@ -141,13 +147,60 @@ static void stat_cb(EV_P_ ev_timer *w, int revents) {
   ev_timer_again(EV_A_ w);
 }
 
+float interval = 1.0;
+float slowstart = 1.0;
+int loss_thr = 10;
+
+static int load_target_list(int argc, char **argv, struct io_ctx *io,
+                            struct ev_loop *loop) {
+  int host_cnt = 0;
+  char *tgt = NULL;
+  FILE *f = NULL;
+  char buf[32];
+  int i = 0;
+  while (i < argc) {
+    // printf("f=%x i=%d\n", f, i);
+    if (f == NULL && argv[i][0] == '@') {
+      char *fn = &argv[i][1];
+      f = fopen(fn, "r");
+      // printf("f=%x i=%d s=%s\n", f, i, fn);
+      if (!f)
+        perror(fn);
+    }
+    if (f) {
+      tgt = fgets(buf, sizeof(buf), f);
+      if (NULL == tgt) {
+        fclose(f);
+        f = NULL;
+        i++;
+        continue;
+      }
+      tgt[strlen(tgt) - 1] = 0;
+    } else {
+      tgt = argv[i];
+      i++;
+    }
+    ctx_t c = ctx_new(tgt, io);
+    if (NULL == c) {
+      fprintf(stderr, "Invalid ip address: %s\n", tgt);
+      continue;
+    }
+    c->interval = interval;
+    c->loss_thr = loss_thr;
+    float initial_delay = (host_cnt * slowstart / 1000.0);
+    // printf("%s %f\n", c->tgt, initial_delay);
+    ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
+    ev_timer_start(loop, &c->timeout);
+    host_cnt++;
+  }
+  return host_cnt;
+}
+
 int main(int argc, char **argv) {
   int opt;
   char *log_name = NULL;
   int log_len = 1000 * 1000 * 10;
-  float interval = 1.0;
-  float slowstart = 1.0;
-  int loss_thr = 10;
+
   while ((opt = getopt(argc, argv, "vi:o:l:s:t:")) != -1) {
     switch (opt) {
     case 'v':
@@ -187,86 +240,48 @@ int main(int argc, char **argv) {
     }
   }
   int i, flags;
-  struct ev_loop *loop;
+
+  // multi socket support is leaved here as is, but it did not improvement, so
+  // it's hardcoded to 1
   int sock_cnt = 1;
-  int *sock = malloc(sizeof(int) * sock_cnt);
-  ev_io *io_r = malloc(sizeof(ev_io) * sock_cnt);
-  ev_io *io_w = malloc(sizeof(ev_io) * sock_cnt);
-  ev_timer timer_stat;
+  struct ev_loop *loop = EV_DEFAULT;
 
   srand(time(NULL));
   log_setup(log_name, log_len);
+  struct io_ctx *io = malloc(sizeof(struct io_ctx) * sock_cnt);
 
-  loop = EV_DEFAULT;
   for (i = 0; i < sock_cnt; i++) {
-    sock[i] = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-    if (sock[i] < 0) {
+    io[i].sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if (io[i].sock < 0) {
       perror("socket()");
       return EXIT_FAILURE;
     }
-    flags = fcntl(sock[i], F_GETFL);
-    fcntl(sock[i], F_SETFL, flags | O_NONBLOCK);
+    flags = fcntl(io[i].sock, F_GETFL);
+    fcntl(io[i].sock, F_SETFL, flags | O_NONBLOCK);
 
-    // int val = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE |
+    // TODO: use an cmd options to select timestamp method.
+    // flags = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE |
     //           SOF_TIMESTAMPING_TX_HARDWARE | SOF_TIMESTAMPING_TX_SOFTWARE;
-    // val |= SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
-    int val = 1;
-    // setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val));
-    setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPNS, &val, sizeof(val));
+    // flags |= SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
+    flags = 1;
+    // setsockopt(sock[i], SOL_SOCKET, SO_TIMESTAMPING, &flags, sizeof(flags));
+    setsockopt(io[i].sock, SOL_SOCKET, SO_TIMESTAMPNS, &flags, sizeof(flags));
 
-    ev_io_init(io_r + i, read_cb, sock[i], EV_READ);
-    ev_io_init(io_w + i, write_cb, sock[i], EV_WRITE);
-    // ev_set_priority(io_r + i, 2);
-    // ev_set_priority(io_w + i, 1);
-    ev_io_start(loop, io_r + i);
-    ev_io_start(loop, io_w + i);
+    ev_io_init(&io[i].r, read_cb, io[i].sock, EV_READ);
+    ev_io_init(&io[i].w, write_cb, io[i].sock, EV_WRITE);
+
+    ev_io_start(loop, &io[i].r);
+    ev_io_start(loop, &io[i].w);
   }
-  int host_cnt = 0;
-  char *tgt = NULL;
-  FILE *f = NULL;
-  char buf[32];
-  i = optind;
-  while (i < argc) {
-    // printf("f=%x i=%d\n", f, i);
-    if (f == NULL && argv[i][0] == '@') {
-      char *fn = &argv[i][1];
-      f = fopen(fn, "r");
-      // printf("f=%x i=%d s=%s\n", f, i, fn);
-      if (!f)
-        perror(fn);
-    }
-    if (f) {
-      tgt = fgets(buf, sizeof(buf), f);
-      if (NULL == tgt) {
-        fclose(f);
-        f = NULL;
-        i++;
-        continue;
-      }
-      tgt[strlen(tgt) - 1] = 0;
-    } else {
-      tgt = argv[i];
-      i++;
-    }
-    ctx_t c = ctx_new(tgt, &io_r[i % sock_cnt], &io_w[i % sock_cnt],
-                      sock[i % sock_cnt]);
-    if (NULL == c) {
-      fprintf(stderr, "Invalid ip address: %s\n", tgt);
-      continue;
-    }
-    c->interval = interval;
-    c->loss_thr = loss_thr;
-    float initial_delay = (host_cnt * slowstart / 1000.0);
-    // printf("%s %f\n", c->tgt, initial_delay);
-    ev_timer_init(&c->timeout, timeout_cb, initial_delay, c->interval);
-    ev_timer_start(loop, &c->timeout);
-    host_cnt++;
-  }
+  int host_cnt = load_target_list(argc - optind, argv + optind, io, loop);
+  fprintf(stderr, "Loaded %d targets.\n", host_cnt);
+
   if (host_cnt == 0) {
     fputs("Nothing to do.", stderr);
     return 0;
   }
-  fprintf(stderr, "Pinging %d hosts...\n", host_cnt);
+
+  ev_timer timer_stat;
   ev_timer_init(&timer_stat, stat_cb, 1., 1.);
   ev_timer_start(loop, &timer_stat);
 
