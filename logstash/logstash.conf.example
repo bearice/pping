@@ -19,7 +19,7 @@ filter {
         remove_field => ["message","path","host","type"]
     }
     date {
-        match => ["time","UNIX"]
+        match => ["time","UNIX_MS"]
         remove_field => ["time"]
     }
 }

@@ -206,7 +206,7 @@ static int load_target_list() {
     int n = 0;
     ctx_t c = ctx_lhead;
     while (c) {
-      printf("c=%x rc=%d rcc=%d\n", c, c->reload_cnt, reload_cnt);
+      // printf("c=%x rc=%d rcc=%d\n", c, c->reload_cnt, reload_cnt);
       if (c->reload_cnt < reload_cnt) {
         ctx_t next = c->l_next;
         ev_timer_stop(tgt_loop, &c->timeout);

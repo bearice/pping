@@ -144,6 +144,10 @@ static inline uint64_t ts_diff(struct timespec t1, struct timespec t2) {
   return ts2 > ts1 ? ts2 - ts1 : 1;
 };
 
+static inline uint64_t ts2ms(struct timespec t) {
+  return (t.tv_sec * 1000) + (t.tv_nsec / 1000000);
+}
+
 static void ctx_set_state(ctx_t c, char s) {
   c->last_state = c->state;
   c->state = s;
@@ -235,11 +239,11 @@ void ctx_update_ts(ctx_t c, int tx, struct timespec *ts) {
 void ctx_write_log(ctx_t c) {
   if (c->state == JOB_STATE_UP) {
     uint64_t t = c->rtt_ns = ts_diff(c->ts_tx, c->ts_rx);
-    log_write("%d,%s,%lf,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt,
+    log_write("%lu,%s,%lf,%d,%f,%c,%c,%u\n", ts2ms(c->ts_tx), c->tgt,
               t / 1000000.0, c->loss, c->timeout.repeat, c->last_state,
               c->state, c->ip_ttl);
   } else if (c->state != JOB_STATE_INIT) {
-    log_write("%d,%s,-1,%d,%f,%c,%c,%u\n", c->ts_tx.tv_sec, c->tgt, c->loss,
+    log_write("%lu,%s,-1,%d,%f,%c,%c,%u\n", ts2ms(c->ts_tx), c->tgt, c->loss,
               c->timeout.repeat, c->last_state, c->state, c->ip_ttl);
   }
 }
