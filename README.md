@@ -53,8 +53,8 @@ Loss threshold controls how many loss before consider a target as down. When a t
 ### Log format
 
 ```
-1577249544,8.8.8.8,0.901568,0   ,1.000000,U     ,U          ,55
-unix_ts   ,ip     ,rtt     ,loss,interval,status,last_status,ttl
+1577249544000,8.8.8.8,0.901568,0   ,1.000000,U     ,U          ,55
+unix_ts_ms   ,ip     ,rtt     ,loss,interval,status,last_status,ttl
 ```
 
 
