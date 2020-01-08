@@ -94,7 +94,7 @@ wait $pid
 
 ## Analysis
 
-Personally i prefer using logstash for collect the logs and elasticsearch for analysis. templates and config example can be found in `logstash` dir.
+Result can be collected by logstash, see `logstash/logstash.conf.example`.
 
 ## Performance
 
